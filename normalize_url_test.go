@@ -2,6 +2,9 @@ package main
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNormalizeURL(t *testing.T) {
@@ -9,29 +12,43 @@ func TestNormalizeURL(t *testing.T) {
 		name     string
 		inputURL string
 		expected string
+		err      bool
 	}{
 		{
 			name:     "remove scheme",
 			inputURL: "https://www.boot.dev/blog/path",
 			expected: "www.boot.dev/blog/path",
+			err:      false,
 		},
 		{
 			name:     "remove trailing backslash",
-			inputURL: "www.boot.dev/blog/path/",
+			inputURL: "https://www.boot.dev/blog/path/",
 			expected: "www.boot.dev/blog/path",
+			err:      false,
+		},
+		{
+			name:     "upper to lower host",
+			inputURL: "https://WWW.BOOT.DEV/blog/path",
+			expected: "www.boot.dev/blog/path",
+			err:      false,
+		},
+		{
+			name:     "malformed url",
+			inputURL: "This is not a url",
+			expected: "",
+			err:      true,
 		},
 	}
 
-	for i, tc := range tests {
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			actual, err := normalizeURL(tc.inputURL)
-			if err != nil {
-				t.Errorf("Test %v - '%s' FAIL: unexpected error: %v", i, tc.name, err)
+			if tc.err {
+				require.Error(t, err)
 				return
 			}
-			if actual != tc.expected {
-				t.Errorf("Test %v - %s FAIL: expected URL: %v, actual: %v", i, tc.name, tc.expected, actual)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, actual)
 		})
 	}
 }
