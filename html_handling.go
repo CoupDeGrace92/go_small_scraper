@@ -97,6 +97,31 @@ type PageData struct {
 	ImageURLs      []string
 }
 
-func extractPageData(html, pageURL string) PageData {
-	return PageData{}
+func extractPageData(html, pageURL string) (PageData, error) {
+	var out PageData
+	urlObj, err := url.Parse(pageURL)
+	heading, err := getHeadingFromHTML(html)
+	if err != nil {
+		return out, err
+	}
+	p, err := getFirstParagraphFromHTML(html)
+	if err != nil {
+		return out, err
+	}
+	imgs, err := getImagesFromHTML(html, urlObj)
+	if err != nil {
+		return out, err
+	}
+	urls, err := getURLsFromHTML(html, urlObj)
+	if err != nil {
+		return out, err
+	}
+	out = PageData{
+		URL:            pageURL,
+		Heading:        heading,
+		FirstParagraph: p,
+		OutgoingLinks:  urls,
+		ImageURLs:      imgs,
+	}
+	return out, nil
 }

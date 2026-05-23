@@ -269,3 +269,50 @@ func TestGetImagesFromHTML(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractPageData(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseURL  string
+		htmlBody string
+		expected PageData
+		err      bool
+	}{
+		{
+			name:    "base",
+			baseURL: "https://crawler-test.com",
+			htmlBody: `
+			<html><body>
+				<h1>Title</h1>
+				<h2>Subtitle</h2>
+				<p>This paragraph is outside of main</p>
+				<main>
+					<p>This is a paragraph in main</p>
+					<a href="https://crawler-test.com/link1"><span>Example.com</span></a>
+					<a href="https://crawler-test.com/link2"><span>Example.com</span></a>
+					<img src="image.png" alt="Logo">
+				</main>
+			</body></html>
+			`,
+			expected: PageData{
+				URL:            "https://crawler-test.com",
+				Heading:        "Title",
+				FirstParagraph: "This is a paragraph in main",
+				OutgoingLinks:  []string{"https://crawler-test.com/link1", "https://crawler-test.com/link2"},
+				ImageURLs:      []string{"https://crawler-test.com/image.png"},
+			},
+			err: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pd, err := extractPageData(tc.htmlBody, tc.baseURL)
+			if tc.err {
+				require.Error(t, err)
+				return
+			}
+			assert.Equal(t, tc.expected, pd)
+		})
+	}
+}
