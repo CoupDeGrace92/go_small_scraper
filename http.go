@@ -8,8 +8,18 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
+
+type Config struct {
+	baseURL    *url.URL
+	pages      map[string]PageData
+	mu         *sync.Mutex
+	conControl chan struct{}
+	wg         *sync.WaitGroup
+	maxPages   int
+}
 
 func getHTML(rawURL string) (string, error) {
 	req, err := http.NewRequest("GET", rawURL, nil)
@@ -41,18 +51,25 @@ func getHTML(rawURL string) (string, error) {
 	return string(htmlBytes), nil
 }
 
-func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
-	base, err := url.Parse(rawBaseURL)
-	if err != nil {
-		log.Printf("Error trying to parse %s into a url: %v\n", rawBaseURL, err)
+func (cfg *Config) crawlPage(rawCurrentURL string) {
+	defer func() {
+		<-cfg.conControl
+		cfg.wg.Done()
+	}()
+	cfg.conControl <- struct{}{}
+
+	if len(cfg.pages) >= cfg.maxPages {
 		return
 	}
+
+	fmt.Printf("Crawling %s\n", rawCurrentURL)
+
 	current, err := url.Parse(rawCurrentURL)
 	if err != nil {
 		log.Printf("Error trying to parse %s into a url: %v\n", rawCurrentURL, err)
 		return
 	}
-	if base.Host != current.Host {
+	if cfg.baseURL.Host != current.Host {
 		return
 	}
 
@@ -61,25 +78,37 @@ func crawlPage(rawBaseURL, rawCurrentURL string, pages map[string]int) {
 		log.Printf("Error normalizing url: %v\n", err)
 		return
 	}
-	pages[normCurrent]++
-	if pages[normCurrent] == 1 {
-		html, err := getHTML(rawCurrentURL)
+	cfg.mu.Lock()
+	_, exists := cfg.pages[normCurrent]
+	var html string
+	if !exists {
+		html, err = getHTML(rawCurrentURL)
 		if err != nil {
 			log.Printf("Error fetching HTML: %v\n", err)
 			return
 		}
-		b, err := url.Parse(rawBaseURL)
+		pd, err := extractPageData(html, rawCurrentURL)
 		if err != nil {
-			log.Printf("Error trying to parse %s into a url object: %v\n", normCurrent, err)
+			log.Printf("Error extracting page data: %v\n", err)
 			return
 		}
-		urls, err := getURLsFromHTML(html, b)
+		cfg.pages[normCurrent] = pd
+
+	}
+	cfg.mu.Unlock()
+	//We divided this out so we could unlock slightly earlier
+	if !exists {
+		urls, err := getURLsFromHTML(html, cfg.baseURL)
 		if err != nil {
 			log.Printf("Error fetching urls from HTML: %v\n", err)
 			return
 		}
 		for _, u := range urls {
-			crawlPage(rawBaseURL, u, pages)
+
+			cfg.wg.Add(1)
+			go func() {
+				cfg.crawlPage(u)
+			}()
 		}
 	}
 }
